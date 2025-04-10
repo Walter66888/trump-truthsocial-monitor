@@ -1,12 +1,11 @@
 services:
-  # 使用 Docker 定義背景工作服務
-  - type: worker
+  # 使用 Docker 定義 cron 服務
+  - type: cron
     name: trump-truthsocial-monitor
     env: docker
     dockerfilePath: ./Dockerfile
     # 設定每 2 分鐘執行一次
     schedule: "*/2 * * * *"
-    # 環境變數不在這裡定義，將在 Render 控制台中設定
     # 持久儲存數據庫
     disk:
       name: data
