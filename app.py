@@ -215,7 +215,17 @@ def analyze_content(post):
 
 # 發送消息到 LINE 群組
 def send_to_line_group(message):
-    logger.info("發送消息到 LINE 群組")
+    logger.info(f"發送消息到 LINE 群組: {message[:50]}...")
+    
+    if not LINE_CHANNEL_ACCESS_TOKEN:
+        error = "ERROR: LINE_CHANNEL_ACCESS_TOKEN 未設置"
+        logger.error(error)
+        return False
+        
+    if not LINE_GROUP_ID:
+        error = "ERROR: LINE_GROUP_ID 未設置"
+        logger.error(error)
+        return False
     
     url = 'https://api.line.me/v2/bot/message/push'
     
@@ -236,6 +246,11 @@ def send_to_line_group(message):
     
     try:
         response = requests.post(url, headers=headers, data=json.dumps(data))
+        
+        # 輸出詳細回應
+        logger.info(f"LINE API 響應狀態碼: {response.status_code}")
+        logger.info(f"LINE API 響應內容: {response.text}")
+        
         response.raise_for_status()
         logger.info("LINE 消息發送成功")
         return True
