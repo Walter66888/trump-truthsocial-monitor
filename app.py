@@ -286,4 +286,4 @@ def main():
         logger.error(f"執行過程中出錯: {e}")
 
 if __name__ == "__main__":
-    ma
+    main()
