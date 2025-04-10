@@ -244,8 +244,12 @@ def send_to_line_group(message):
         return False
 
 # 主流程
+# 主流程
 def main():
     try:
+        # 發送啟動通知
+        send_to_line_group("🤖 Trump 監控機器人已啟動，正在檢查 Truth Social...")
+        
         # 初始化數據庫
         init_db()
         
@@ -253,19 +257,25 @@ def main():
         latest_post = scrape_truth_social()
         
         if not latest_post:
-            logger.info("沒有找到新貼文")
+            message = "🔍 沒有找到任何貼文，可能是網頁結構變化或者爬蟲問題。"
+            send_to_line_group(message)
             return
+            
+        # 發送爬取結果通知
+        post_info = f"✅ 找到貼文！\n\nID: {latest_post['id']}\n\n內容: {latest_post['content'][:100]}...\n\n媒體數量: {len(latest_post['media_urls'])}"
+        send_to_line_group(post_info)
             
         # 檢查是否為新貼文
         if is_post_exists(latest_post['id']):
-            logger.info("該貼文已處理過，跳過")
+            send_to_line_group("🔄 該貼文已處理過，跳過翻譯和推送。")
             return
             
         # 分析並翻譯內容
+        send_to_line_group("🔄 正在分析並翻譯內容...")
         processed_content = analyze_content(latest_post)
         
         if not processed_content:
-            logger.error("內容處理失敗")
+            send_to_line_group("❌ 內容處理失敗，可能是 DeepSeek API 問題。")
             return
             
         # 構建 LINE 消息
@@ -280,10 +290,9 @@ def main():
         if send_to_line_group(message):
             # 保存已處理的貼文
             save_post(processed_content['id'], processed_content['original_content'])
-            logger.info("處理完成")
+            send_to_line_group("✅ 處理完成，貼文已保存。")
         
     except Exception as e:
-        logger.error(f"執行過程中出錯: {e}")
-
-if __name__ == "__main__":
-    main()
+        error_message = f"❌ 執行過程中出錯: {str(e)}"
+        logger.error(error_message)
+        send_to_line_group(error_message)
