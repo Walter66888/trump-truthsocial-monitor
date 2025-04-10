@@ -177,31 +177,28 @@ def scrape_truth_social():
 def translate_with_deepseek(text):
     logger.info("使用 DeepSeek API 翻譯")
     
-    api_url = "https://api.deepseek.com/v1/chat/completions"
-    
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}"
-    }
-    
-    payload = {
-        "model": "deepseek-chat",
-        "messages": [
-            {"role": "system", "content": "你是一個專業翻譯，請將以下英文文本翻譯成中文。保持原意，使語言流暢自然。"},
-            {"role": "user", "content": text}
-        ],
-        "temperature": 0.3
-    }
-    
     try:
-        response = requests.post(api_url, headers=headers, json=payload)
-        response.raise_for_status()
+        # 使用 OpenAI SDK 的方式來呼叫 DeepSeek API
+        from openai import OpenAI
         
-        result = response.json()
-        translated_text = result.get('choices', [{}])[0].get('message', {}).get('content', '')
+        client = OpenAI(
+            api_key=DEEPSEEK_API_KEY,
+            base_url="https://api.deepseek.com"
+        )
         
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": "你是一個專業翻譯，請將以下英文文本翻譯成中文。保持原意，使語言流暢自然。"},
+                {"role": "user", "content": text}
+            ],
+            temperature=0.3,
+            stream=False
+        )
+        
+        translated_text = response.choices[0].message.content
         return translated_text
-    
+        
     except Exception as e:
         logger.error(f"翻譯失敗: {e}")
         return f"[翻譯錯誤] 原文: {text}"
