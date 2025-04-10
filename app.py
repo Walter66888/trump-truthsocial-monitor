@@ -6,7 +6,6 @@ import random
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -14,47 +13,48 @@ import hashlib
 import sqlite3
 from datetime import datetime
 import logging
+import traceback
 
-# 設置日誌
+# 设置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# 環境變數配置
+# 环境变量配置
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_GROUP_ID = os.environ.get("LINE_GROUP_ID")
 
-# 驗證環境變數
+# 验证环境变量
 if not DEEPSEEK_API_KEY:
-    logger.error("未設置 DEEPSEEK_API_KEY 環境變數")
-    raise ValueError("必須設置 DEEPSEEK_API_KEY 環境變數")
+    logger.error("未设置 DEEPSEEK_API_KEY 环境变量")
+    raise ValueError("必须设置 DEEPSEEK_API_KEY 环境变量")
     
 if not LINE_CHANNEL_ACCESS_TOKEN:
-    logger.error("未設置 LINE_CHANNEL_ACCESS_TOKEN 環境變數")
-    raise ValueError("必須設置 LINE_CHANNEL_ACCESS_TOKEN 環境變數")
+    logger.error("未设置 LINE_CHANNEL_ACCESS_TOKEN 环境变量")
+    raise ValueError("必须设置 LINE_CHANNEL_ACCESS_TOKEN 环境变量")
     
 if not LINE_GROUP_ID:
-    logger.error("未設置 LINE_GROUP_ID 環境變數")
-    raise ValueError("必須設置 LINE_GROUP_ID 環境變數")
+    logger.error("未设置 LINE_GROUP_ID 环境变量")
+    raise ValueError("必须设置 LINE_GROUP_ID 环境变量")
 
 # Truth Social URL
 TRUTH_URL = "https://truthsocial.com/@realDonaldTrump"
 
-# 設置日誌頂部
+# 设置日志顶部
 def log_startup():
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     logger.info("=" * 50)
-    logger.info(f"腳本啟動時間: {current_time}")
+    logger.info(f"脚本启动时间: {current_time}")
     logger.info("=" * 50)
 
-# 腳本結束時的日誌
+# 脚本结束时的日志
 def log_shutdown():
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     logger.info("=" * 50)
-    logger.info(f"腳本結束時間: {current_time}")
+    logger.info(f"脚本结束时间: {current_time}")
     logger.info("=" * 50)
 
-# 初始化數據庫
+# 初始化数据库
 def init_db():
     conn = sqlite3.connect('posts.db')
     cursor = conn.cursor()
@@ -67,9 +67,9 @@ def init_db():
     ''')
     conn.commit()
     conn.close()
-    logger.info("數據庫初始化完成")
+    logger.info("数据库初始化完成")
 
-# 檢查貼文是否已存在
+# 检查贴文是否已存在
 def is_post_exists(post_id):
     conn = sqlite3.connect('posts.db')
     cursor = conn.cursor()
@@ -78,7 +78,7 @@ def is_post_exists(post_id):
     conn.close()
     return exists
 
-# 保存新貼文
+# 保存新贴文
 def save_post(post_id, content):
     conn = sqlite3.connect('posts.db')
     cursor = conn.cursor()
@@ -88,7 +88,7 @@ def save_post(post_id, content):
     )
     conn.commit()
     conn.close()
-    logger.info(f"保存貼文 ID: {post_id}")
+    logger.info(f"保存贴文 ID: {post_id}")
 
 # 配置 Selenium
 def setup_selenium():
@@ -98,6 +98,7 @@ def setup_selenium():
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-extensions")
     
     # 使用系统安装的 Chromium
     chrome_bin = os.environ.get("CHROME_BIN", "/usr/bin/chromium")
@@ -111,140 +112,158 @@ def setup_selenium():
     except Exception as e:
         logger.error(f"建立 driver 失败: {e}")
         raise
-        
-# 爬取 Truth Social 貼文
+
+# 尝试使用虚拟浏览器技术爬取
 def scrape_truth_social():
-    logger.info("開始爬取 Truth Social")
+    logger.info("开始爬取 Truth Social")
     
     driver = None
     
     try:
         driver = setup_selenium()
         
-        # 添加隨機用戶代理
+        # 添加随机用户代理
         user_agents = [
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Safari/605.1.15',
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36 Edg/92.0.902.84',
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:95.0) Gecko/20100101 Firefox/95.0'
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.93 Safari/537.36'
         ]
         driver.execute_cdp_cmd('Network.setUserAgentOverride', {"userAgent": random.choice(user_agents)})
         
-        # 訪問頁面
+        # 访问页面
         driver.get(TRUTH_URL)
-        logger.info("已訪問 Truth Social 頁面")
+        logger.info("已访问 Truth Social 页面")
         
-        # 等待較長時間確保頁面完全加載
+        # 等待较长时间确保页面完全加载
+        logger.info("等待页面加载...")
+        time.sleep(10)
+        
         try:
-            logger.info("等待頁面元素加載...")
-            # 嘗試多種可能的選擇器
-            selectors = ["article.status-card", "div.status-wrapper", ".truth-social-post", ".post-content", ".timeline-item", "article", "div.post"]
-            
-            for selector in selectors:
-                try:
-                    logger.info(f"嘗試選擇器: {selector}")
-                    WebDriverWait(driver, 5).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, selector))
-                    )
-                    logger.info(f"選擇器 {selector} 成功找到元素")
-                    break
-                except:
-                    logger.info(f"選擇器 {selector} 未找到元素")
-                    continue
-            
-            # 添加更長的等待時間
-            logger.info("等待頁面完全加載...")
-            time.sleep(10)
-            
-            # 截取屏幕截圖以便診斷
-            driver.save_screenshot("truthsocial_screenshot.png")
-            logger.info("已保存頁面截圖")
-            
-            # 獲取所有頁面內容進行分析
+            # 尝试获取页面源代码
             page_source = driver.page_source
-            
-            # 將頁面源代碼保存到文件中以便分析
-            with open("truthsocial_page.html", "w", encoding="utf-8") as f:
-                f.write(page_source)
-            logger.info("已保存頁面源代碼")
-            
             soup = BeautifulSoup(page_source, 'html.parser')
             
-            # 嘗試尋找任何可能的貼文容器元素
-            all_articles = soup.find_all('article')
-            all_divs_with_post = soup.find_all('div', class_=lambda x: x and ('post' in x.lower() or 'truth' in x.lower() or 'status' in x.lower()))
+            # 尝试各种选择器
+            post_elements = []
+            selectors = [
+                'article', 
+                'div.status-card', 
+                'div.status-wrapper', 
+                'div.post', 
+                'div.truth'
+            ]
             
-            logger.info(f"找到 {len(all_articles)} 個 article 元素")
-            logger.info(f"找到 {len(all_divs_with_post)} 個疑似貼文的 div 元素")
-            
-            # 尋找最新的貼文
-            posts = []
-            
-            # 嘗試多種可能的選擇器
-            for selector in ['article.status-card', 'div.status-wrapper', '.truth-social-post', '.post-content', '.timeline-item', 'article', 'div.post']:
-                posts = soup.select(selector)
-                if posts:
-                    logger.info(f"使用選擇器 '{selector}' 找到 {len(posts)} 個貼文")
+            for selector in selectors:
+                elements = soup.select(selector)
+                if elements:
+                    logger.info(f"找到 {len(elements)} 个匹配 '{selector}' 的元素")
+                    post_elements = elements
                     break
             
-            if not posts and all_articles:
-                posts = all_articles
-                logger.info(f"使用所有 article 元素作為備用")
+            if not post_elements:
+                # 备用方案：尝试找任何可能的贴文
+                post_candidates = soup.find_all('div', class_=lambda c: c and ('post' in c.lower() or 'status' in c.lower() or 'truth' in c.lower()))
+                if post_candidates:
+                    logger.info(f"找到 {len(post_candidates)} 个可能的贴文元素")
+                    post_elements = post_candidates
             
-            if not posts and all_divs_with_post:
-                posts = all_divs_with_post
-                logger.info(f"使用可能的貼文 div 元素作為備用")
-            
-            if not posts:
-                logger.warning("沒有找到任何可能的貼文元素")
-                return None
-            
-            latest_post = posts[0]
-            logger.info("找到最新貼文")
-            
-            # 提取貼文內容（嘗試多種方法）
-            content = None
-            
-            # 方法 1: 直接找内容元素
-            content_selectors = ['div.status-content', 'div.status-body', '.post-content', '.truth-content', 'p', '.text']
-            for selector in content_selectors:
-                content_element = latest_post.select_one(selector)
-                if content_element:
-                    content = content_element.text.strip()
-                    logger.info(f"使用選擇器 '{selector}' 找到貼文內容")
-                    break
-            
-            # 方法 2: 如果沒找到特定内容元素，使用整個貼文的文本
-            if not content:
-                content = latest_post.get_text(separator=' ', strip=True)
-                logger.info("使用整個貼文的文本作為內容")
-            
-            if not content:
-                logger.warning("無法提取貼文內容")
-                return None
+            if not post_elements:
+                logger.warning("无法找到任何贴文元素")
                 
-            # 生成貼文 ID
+                # 最后尝试：获取使用 AJAX 加载的内容
+                try:
+                    logger.info("尝试通过直接 API 请求获取贴文...")
+                    
+                    # 尝试使用 requests 直接获取 API 数据
+                    api_url = f"https://truthsocial.com/api/v1/accounts/realDonaldTrump/statuses"
+                    headers = {
+                        'User-Agent': random.choice(user_agents),
+                        'Accept': 'application/json'
+                    }
+                    
+                    response = requests.get(api_url, headers=headers)
+                    if response.status_code == 200:
+                        data = response.json()
+                        if data and len(data) > 0:
+                            latest_truth = data[0]
+                            content = latest_truth.get('content', '')
+                            
+                            # 清理 HTML 标签
+                            content_soup = BeautifulSoup(content, 'html.parser')
+                            clean_content = content_soup.get_text()
+                            
+                            post_id = str(latest_truth.get('id'))
+                            
+                            # 获取媒体 URL
+                            media_urls = []
+                            media_attachments = latest_truth.get('media_attachments', [])
+                            for media in media_attachments:
+                                url = media.get('url')
+                                if url:
+                                    media_urls.append(url)
+                            
+                            logger.info(f"通过 API 获取到贴文，ID: {post_id}")
+                            return {
+                                'id': post_id,
+                                'content': clean_content,
+                                'media_urls': media_urls
+                            }
+                    
+                    logger.warning(f"API 请求失败或没有数据: {response.status_code}")
+                except Exception as e:
+                    logger.error(f"API 请求失败: {e}")
+                
+                return None
+            
+            # 获取最新的贴文
+            latest_post = post_elements[0]
+            
+            # 尝试提取文本内容
+            content = None
+            content_selectors = [
+                'div.status-content', 
+                'div.status-body', 
+                'div.post-content', 
+                'p', 
+                'div.text'
+            ]
+            
+            for selector in content_selectors:
+                element = latest_post.select_one(selector)
+                if element:
+                    content = element.get_text(strip=True)
+                    logger.info(f"使用选择器 '{selector}' 找到内容")
+                    break
+            
+            if not content:
+                # 如果找不到特定元素，尝试提取所有文本
+                content = latest_post.get_text(separator=' ', strip=True)
+                logger.info("使用整个元素的文本作为内容")
+            
+            if not content:
+                logger.warning("无法提取贴文内容")
+                return None
+            
+            # 生成唯一ID
             post_id = hashlib.md5(content.encode()).hexdigest()
             
-            # 檢查是否有媒體
+            # 查找媒体
             media_urls = []
-            
-            # 尋找所有圖片和視頻元素
             for img in latest_post.find_all('img'):
-                src = img.get('src') or img.get('data-src')
+                src = img.get('src')
                 if src and not src.endswith(('.svg', '.ico')):
                     if not src.startswith(('http://', 'https://')):
                         src = f"https://truthsocial.com{src}" if src.startswith('/') else f"https://truthsocial.com/{src}"
                     media_urls.append(src)
-                    
+            
             for video in latest_post.find_all('video'):
-                src = video.get('src') or video.get('data-src')
+                src = video.get('src')
                 if src:
                     if not src.startswith(('http://', 'https://')):
                         src = f"https://truthsocial.com{src}" if src.startswith('/') else f"https://truthsocial.com/{src}"
                     media_urls.append(src)
             
-            logger.info(f"貼文 ID: {post_id}, 媒體數量: {len(media_urls)}")
+            logger.info(f"找到贴文，ID: {post_id}, 媒体数量: {len(media_urls)}")
             return {
                 'id': post_id,
                 'content': content,
@@ -252,14 +271,26 @@ def scrape_truth_social():
             }
             
         except Exception as e:
-            logger.error(f"處理頁面內容時出錯: {e}")
+            logger.error(f"处理页面时出错: {e}")
+            logger.error(traceback.format_exc())
+            return None
+            
+    except Exception as e:
+        logger.error(f"爬取失败: {e}")
+        logger.error(traceback.format_exc())
+        return None
+        
+    finally:
+        if driver:
+            driver.quit()
+            logger.info("Selenium driver 已关闭")
 
-# 使用 DeepSeek API 翻譯內容
+# 使用 DeepSeek API 翻译内容
 def translate_with_deepseek(text):
-    logger.info("使用 DeepSeek API 翻譯")
+    logger.info("使用 DeepSeek API 翻译")
     
     try:
-        # 使用 OpenAI SDK 的方式來呼叫 DeepSeek API
+        # 使用 OpenAI SDK 的方式来调用 DeepSeek API
         from openai import OpenAI
         
         client = OpenAI(
@@ -270,7 +301,7 @@ def translate_with_deepseek(text):
         response = client.chat.completions.create(
             model="deepseek-chat",
             messages=[
-                {"role": "system", "content": "你是一個專業翻譯，請將以下英文文本翻譯成中文。保持原意，使語言流暢自然。"},
+                {"role": "system", "content": "你是一个专业翻译，请将以下英文文本翻译成中文。保持原意，使语言流畅自然。"},
                 {"role": "user", "content": text}
             ],
             temperature=0.3,
@@ -278,22 +309,23 @@ def translate_with_deepseek(text):
         )
         
         translated_text = response.choices[0].message.content
-        logger.info("翻譯完成")
+        logger.info("翻译完成")
         return translated_text
         
     except Exception as e:
-        logger.error(f"翻譯失敗: {e}")
-        return f"[翻譯錯誤] 原文: {text}"
+        logger.error(f"翻译失败: {e}")
+        logger.error(traceback.format_exc())
+        return f"[翻译错误] 原文: {text}"
 
-# 內容分析（判斷是文字還是視頻）
+# 内容分析（判断是文字还是视频）
 def analyze_content(post):
     if not post:
         return None
         
-    # 檢查是否包含視頻
+    # 检查是否包含视频
     is_video = any(url.endswith(('.mp4', '.avi', '.mov', '.webm')) for url in post.get('media_urls', []))
     
-    # 翻譯文本內容
+    # 翻译文本内容
     translated_content = translate_with_deepseek(post['content'])
     
     result = {
@@ -305,21 +337,21 @@ def analyze_content(post):
     }
     
     content_type = "影片" if is_video else "文字"
-    logger.info(f"內容類型: {content_type}")
+    logger.info(f"内容类型: {content_type}")
     
     return result
 
-# 發送消息到 LINE 群組
+# 发送消息到 LINE 群组
 def send_to_line_group(message):
-    logger.info(f"發送消息到 LINE 群組: {message[:50]}...")
+    logger.info(f"发送消息到 LINE 群组: {message[:50]}...")
     
     if not LINE_CHANNEL_ACCESS_TOKEN:
-        error = "ERROR: LINE_CHANNEL_ACCESS_TOKEN 未設置"
+        error = "ERROR: LINE_CHANNEL_ACCESS_TOKEN 未设置"
         logger.error(error)
         return False
         
     if not LINE_GROUP_ID:
-        error = "ERROR: LINE_GROUP_ID 未設置"
+        error = "ERROR: LINE_GROUP_ID 未设置"
         logger.error(error)
         return False
     
@@ -343,15 +375,16 @@ def send_to_line_group(message):
     try:
         response = requests.post(url, headers=headers, data=json.dumps(data))
         
-        # 輸出詳細回應
-        logger.info(f"LINE API 響應狀態碼: {response.status_code}")
-        logger.info(f"LINE API 響應內容: {response.text}")
+        # 输出详细响应
+        logger.info(f"LINE API 响应状态码: {response.status_code}")
+        logger.info(f"LINE API 响应内容: {response.text}")
         
         response.raise_for_status()
-        logger.info("LINE 消息發送成功")
+        logger.info("LINE 消息发送成功")
         return True
     except Exception as e:
-        logger.error(f"LINE 消息發送失敗: {e}")
+        logger.error(f"LINE 消息发送失败: {e}")
+        logger.error(traceback.format_exc())
         return False
 
 # 主流程
@@ -359,73 +392,74 @@ def main():
     try:
         log_startup()
         
-        # 第一次啟動時發送通知，用於確認機器人正常工作
+        # 第一次启动时发送通知，用于确认机器人正常工作
         first_run_file = "first_run_completed.txt"
         first_run = not os.path.exists(first_run_file)
         
         if first_run:
-            send_to_line_group("🤖 Trump 監控機器人首次啟動，正在檢查 Truth Social...")
+            send_to_line_group("🤖 Trump 监控机器人首次启动，正在检查 Truth Social...")
         
-        # 初始化數據庫
+        # 初始化数据库
         init_db()
         
-        # 爬取最新貼文
+        # 爬取最新贴文
         latest_post = scrape_truth_social()
         
         if not latest_post:
             if first_run:
-                send_to_line_group("🔍 首次爬取沒有找到任何貼文，可能是網頁結構變化或者爬蟲問題。")
+                send_to_line_group("🔍 首次爬取没有找到任何贴文，可能是网页结构变化或者爬虫问题。")
             return
             
-        # 只在首次運行時發送爬取結果通知
+        # 只在首次运行时发送爬取结果通知
         if first_run:
-            post_info = f"✅ 首次爬取成功！找到貼文！\n\nID: {latest_post['id']}\n\n內容: {latest_post['content'][:100]}...\n\n媒體數量: {len(latest_post['media_urls'])}"
+            post_info = f"✅ 首次爬取成功！找到贴文！\n\nID: {latest_post['id']}\n\n内容: {latest_post['content'][:100]}...\n\n媒体数量: {len(latest_post['media_urls'])}"
             send_to_line_group(post_info)
-            # 標記首次運行已完成
+            # 标记首次运行已完成
             with open(first_run_file, "w") as f:
                 f.write("completed")
         
-        # 檢查貼文是否已存在
+        # 检查贴文是否已存在
         if is_post_exists(latest_post['id']):
-            logger.info(f"貼文 {latest_post['id']} 已存在，跳過處理")
-            return  # 靜默跳過，不發送通知
+            logger.info(f"贴文 {latest_post['id']} 已存在，跳过处理")
+            return  # 静默跳过，不发送通知
         
-        # 檢查是否為影片貼文
+        # 检查是否为影片贴文
         is_video = any(url.endswith(('.mp4', '.avi', '.mov', '.webm')) for url in latest_post.get('media_urls', []))
         
         if is_video:
-            # 靜默略過影片貼文，但仍然保存到數據庫
-            logger.info("檢測到影片貼文，略過處理")
+            # 静默略过影片贴文，但仍然保存到数据库
+            logger.info("检测到影片贴文，略过处理")
             save_post(latest_post['id'], latest_post['content'])
             return
             
-        # 分析並翻譯內容（不發送進度通知）
-        logger.info("開始分析並翻譯內容")
+        # 分析并翻译内容（不发送进度通知）
+        logger.info("开始分析并翻译内容")
         processed_content = analyze_content(latest_post)
         
         if not processed_content:
-            logger.error("內容處理失敗")
-            return  # 處理失敗，靜默跳過
+            logger.error("内容处理失败")
+            return  # 处理失败，静默跳过
             
-        # 構建 LINE 消息
-        message = f"🔔 Trump 在 Truth Social 有新動態！\n\n📝 類型: 文字\n\n🇺🇸 原文:\n{processed_content['original_content']}\n\n🇹🇼 中文翻譯:\n{processed_content['translated_content']}"
+        # 构建 LINE 消息
+        message = f"🔔 Trump 在 Truth Social 有新动态！\n\n📝 类型: 文字\n\n🇺🇸 原文:\n{processed_content['original_content']}\n\n🇹🇼 中文翻译:\n{processed_content['translated_content']}"
         
-        # 如果有媒體但不是視頻，附加媒體 URL
+        # 如果有媒体但不是视频，附加媒体 URL
         if processed_content['media_urls']:
-            message += "\n\n🖼️ 媒體連結:\n" + "\n".join(processed_content['media_urls'])
+            message += "\n\n🖼️ 媒体链接:\n" + "\n".join(processed_content['media_urls'])
         
-        # 發送到 LINE 群組
-        logger.info("準備發送消息到 LINE 群組")
+        # 发送到 LINE 群组
+        logger.info("准备发送消息到 LINE 群组")
         if send_to_line_group(message):
-            # 保存已處理的貼文
+            # 保存已处理的贴文
             save_post(processed_content['id'], processed_content['original_content'])
-            logger.info("處理完成，貼文已保存")
+            logger.info("处理完成，贴文已保存")
         
     except Exception as e:
-        logger.error(f"執行過程中出錯: {str(e)}")
-        # 只在首次運行時發送錯誤通知
+        logger.error(f"执行过程中出错: {str(e)}")
+        logger.error(traceback.format_exc())
+        # 只在首次运行时发送错误通知
         if first_run:
-            error_message = f"❌ 首次執行過程中出錯: {str(e)}"
+            error_message = f"❌ 首次执行过程中出错: {str(e)}"
             send_to_line_group(error_message)
     finally:
         log_shutdown()
