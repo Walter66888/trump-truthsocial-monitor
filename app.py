@@ -6,7 +6,6 @@ from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -40,6 +39,20 @@ if not LINE_GROUP_ID:
 # Truth Social URL
 TRUTH_URL = "https://truthsocial.com/@realDonaldTrump"
 
+# 設置日誌頂部
+def log_startup():
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    logger.info("=" * 50)
+    logger.info(f"腳本啟動時間: {current_time}")
+    logger.info("=" * 50)
+
+# 腳本結束時的日誌
+def log_shutdown():
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    logger.info("=" * 50)
+    logger.info(f"腳本結束時間: {current_time}")
+    logger.info("=" * 50)
+
 # 初始化數據庫
 def init_db():
     conn = sqlite3.connect('posts.db')
@@ -53,6 +66,7 @@ def init_db():
     ''')
     conn.commit()
     conn.close()
+    logger.info("數據庫初始化完成")
 
 # 檢查貼文是否已存在
 def is_post_exists(post_id):
@@ -73,39 +87,29 @@ def save_post(post_id, content):
     )
     conn.commit()
     conn.close()
+    logger.info(f"保存貼文 ID: {post_id}")
 
 # 配置 Selenium
-# 配置 Selenium
 def setup_selenium():
+    logger.info("設置 Selenium")
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     
-    # 使用系統已安裝的 Chrome
+    # 使用系統安裝的 Chrome
     chrome_bin = "/usr/bin/google-chrome-stable"
     chrome_options.binary_location = chrome_bin
     
-    # 不使用 ChromeDriverManager，直接使用系統路徑
+    # 使用系統安裝的 chromedriver
     try:
-        # 嘗試直接使用 Chrome 瀏覽器
         driver = webdriver.Chrome(options=chrome_options)
+        logger.info("成功使用系統 chromedriver 建立 driver")
         return driver
     except Exception as e:
-        logger.error(f"直接使用 Chrome 失敗: {e}")
-        
-        try:
-            # 備用方案：使用固定路徑的 chromedriver
-            driver = webdriver.Chrome(executable_path="/usr/bin/chromedriver", options=chrome_options)
-            return driver
-        except Exception as e:
-            logger.error(f"使用固定路徑 chromedriver 失敗: {e}")
-            
-            # 最後嘗試：使用 ChromeDriverManager
-            service = Service(ChromeDriverManager().install())
-            driver = webdriver.Chrome(service=service, options=chrome_options)
-            return driver
+        logger.error(f"建立 driver 失敗: {e}")
+        raise
 
 # 爬取 Truth Social 貼文
 def scrape_truth_social():
@@ -116,11 +120,13 @@ def scrape_truth_social():
     try:
         driver = setup_selenium()
         driver.get(TRUTH_URL)
+        logger.info("已訪問 Truth Social 頁面")
         
         # 等待頁面加載
         WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "article.status-card, div.status-wrapper"))
         )
+        logger.info("頁面元素已加載")
         
         # 確保頁面完全加載
         time.sleep(5)
@@ -136,6 +142,7 @@ def scrape_truth_social():
             return None
         
         latest_post = posts[0]
+        logger.info("找到最新貼文")
         
         # 提取貼文內容
         content_element = latest_post.select_one('div.status-content, div.status-body')
@@ -159,6 +166,7 @@ def scrape_truth_social():
                     src = f"https://truthsocial.com{src}" if src.startswith('/') else f"https://truthsocial.com/{src}"
                 media_urls.append(src)
         
+        logger.info(f"貼文 ID: {post_id}, 媒體數量: {len(media_urls)}")
         return {
             'id': post_id,
             'content': content,
@@ -172,6 +180,7 @@ def scrape_truth_social():
     finally:
         if driver:
             driver.quit()
+            logger.info("Selenium driver 已關閉")
 
 # 使用 DeepSeek API 翻譯內容
 def translate_with_deepseek(text):
@@ -197,6 +206,7 @@ def translate_with_deepseek(text):
         )
         
         translated_text = response.choices[0].message.content
+        logger.info("翻譯完成")
         return translated_text
         
     except Exception as e:
@@ -273,11 +283,16 @@ def send_to_line_group(message):
         return False
 
 # 主流程
-# 主流程
 def main():
     try:
-        # 發送啟動通知
-        send_to_line_group("🤖 Trump 監控機器人已啟動，正在檢查 Truth Social...")
+        log_startup()
+        
+        # 第一次啟動時發送通知，用於確認機器人正常工作
+        first_run_file = "first_run_completed.txt"
+        first_run = not os.path.exists(first_run_file)
+        
+        if first_run:
+            send_to_line_group("🤖 Trump 監控機器人首次啟動，正在檢查 Truth Social...")
         
         # 初始化數據庫
         init_db()
@@ -286,42 +301,62 @@ def main():
         latest_post = scrape_truth_social()
         
         if not latest_post:
-            message = "🔍 沒有找到任何貼文，可能是網頁結構變化或者爬蟲問題。"
-            send_to_line_group(message)
+            if first_run:
+                send_to_line_group("🔍 首次爬取沒有找到任何貼文，可能是網頁結構變化或者爬蟲問題。")
             return
             
-        # 發送爬取結果通知
-        post_info = f"✅ 找到貼文！\n\nID: {latest_post['id']}\n\n內容: {latest_post['content'][:100]}...\n\n媒體數量: {len(latest_post['media_urls'])}"
-        send_to_line_group(post_info)
-            
-        # 檢查是否為新貼文
+        # 只在首次運行時發送爬取結果通知
+        if first_run:
+            post_info = f"✅ 首次爬取成功！找到貼文！\n\nID: {latest_post['id']}\n\n內容: {latest_post['content'][:100]}...\n\n媒體數量: {len(latest_post['media_urls'])}"
+            send_to_line_group(post_info)
+            # 標記首次運行已完成
+            with open(first_run_file, "w") as f:
+                f.write("completed")
+        
+        # 檢查貼文是否已存在
         if is_post_exists(latest_post['id']):
-            send_to_line_group("🔄 該貼文已處理過，跳過翻譯和推送。")
+            logger.info(f"貼文 {latest_post['id']} 已存在，跳過處理")
+            return  # 靜默跳過，不發送通知
+        
+        # 檢查是否為影片貼文
+        is_video = any(url.endswith(('.mp4', '.avi', '.mov', '.webm')) for url in latest_post.get('media_urls', []))
+        
+        if is_video:
+            # 靜默略過影片貼文，但仍然保存到數據庫
+            logger.info("檢測到影片貼文，略過處理")
+            save_post(latest_post['id'], latest_post['content'])
             return
             
-        # 分析並翻譯內容
-        send_to_line_group("🔄 正在分析並翻譯內容...")
+        # 分析並翻譯內容（不發送進度通知）
+        logger.info("開始分析並翻譯內容")
         processed_content = analyze_content(latest_post)
         
         if not processed_content:
-            send_to_line_group("❌ 內容處理失敗，可能是 DeepSeek API 問題。")
-            return
+            logger.error("內容處理失敗")
+            return  # 處理失敗，靜默跳過
             
         # 構建 LINE 消息
-        content_type = "影片" if processed_content['is_video'] else "文字"
-        message = f"🔔 Trump 在 Truth Social 有新動態！\n\n📝 類型: {content_type}\n\n🇺🇸 原文:\n{processed_content['original_content']}\n\n🇹🇼 中文翻譯:\n{processed_content['translated_content']}"
+        message = f"🔔 Trump 在 Truth Social 有新動態！\n\n📝 類型: 文字\n\n🇺🇸 原文:\n{processed_content['original_content']}\n\n🇹🇼 中文翻譯:\n{processed_content['translated_content']}"
         
-        # 如果有媒體，附加媒體 URL
+        # 如果有媒體但不是視頻，附加媒體 URL
         if processed_content['media_urls']:
             message += "\n\n🖼️ 媒體連結:\n" + "\n".join(processed_content['media_urls'])
         
         # 發送到 LINE 群組
+        logger.info("準備發送消息到 LINE 群組")
         if send_to_line_group(message):
             # 保存已處理的貼文
             save_post(processed_content['id'], processed_content['original_content'])
-            send_to_line_group("✅ 處理完成，貼文已保存。")
+            logger.info("處理完成，貼文已保存")
         
     except Exception as e:
-        error_message = f"❌ 執行過程中出錯: {str(e)}"
-        logger.error(error_message)
-        send_to_line_group(error_message)
+        logger.error(f"執行過程中出錯: {str(e)}")
+        # 只在首次運行時發送錯誤通知
+        if first_run:
+            error_message = f"❌ 首次執行過程中出錯: {str(e)}"
+            send_to_line_group(error_message)
+    finally:
+        log_shutdown()
+
+if __name__ == "__main__":
+    main()
