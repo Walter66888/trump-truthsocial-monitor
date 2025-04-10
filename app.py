@@ -91,26 +91,26 @@ def save_post(post_id, content):
 
 # 配置 Selenium
 def setup_selenium():
-    logger.info("設置 Selenium")
+    logger.info("设置 Selenium")
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     
-    # 使用系統安裝的 Chrome
-    chrome_bin = "/usr/bin/google-chrome-stable"
+    # 使用系统安装的 Chromium
+    chrome_bin = os.environ.get("CHROME_BIN", "/usr/bin/chromium")
     chrome_options.binary_location = chrome_bin
     
-    # 使用系統安裝的 chromedriver
+    # 使用系统安装的 chromedriver
     try:
         driver = webdriver.Chrome(options=chrome_options)
-        logger.info("成功使用系統 chromedriver 建立 driver")
+        logger.info("成功使用系统 chromedriver 建立 driver")
         return driver
     except Exception as e:
-        logger.error(f"建立 driver 失敗: {e}")
+        logger.error(f"建立 driver 失败: {e}")
         raise
-
+        
 # 爬取 Truth Social 貼文
 def scrape_truth_social():
     logger.info("開始爬取 Truth Social")
