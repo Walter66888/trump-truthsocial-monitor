@@ -75,6 +75,7 @@ def save_post(post_id, content):
     conn.close()
 
 # 配置 Selenium
+# 配置 Selenium
 def setup_selenium():
     chrome_options = Options()
     chrome_options.add_argument("--headless")
@@ -82,13 +83,29 @@ def setup_selenium():
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     
-    if os.environ.get('RENDER'):
-        chrome_bin = os.environ.get("CHROME_BIN", "/usr/bin/google-chrome-stable")
-        chrome_options.binary_location = chrome_bin
+    # 使用系統已安裝的 Chrome
+    chrome_bin = "/usr/bin/google-chrome-stable"
+    chrome_options.binary_location = chrome_bin
     
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=chrome_options)
-    return driver
+    # 不使用 ChromeDriverManager，直接使用系統路徑
+    try:
+        # 嘗試直接使用 Chrome 瀏覽器
+        driver = webdriver.Chrome(options=chrome_options)
+        return driver
+    except Exception as e:
+        logger.error(f"直接使用 Chrome 失敗: {e}")
+        
+        try:
+            # 備用方案：使用固定路徑的 chromedriver
+            driver = webdriver.Chrome(executable_path="/usr/bin/chromedriver", options=chrome_options)
+            return driver
+        except Exception as e:
+            logger.error(f"使用固定路徑 chromedriver 失敗: {e}")
+            
+            # 最後嘗試：使用 ChromeDriverManager
+            service = Service(ChromeDriverManager().install())
+            driver = webdriver.Chrome(service=service, options=chrome_options)
+            return driver
 
 # 爬取 Truth Social 貼文
 def scrape_truth_social():
