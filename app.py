@@ -2,6 +2,7 @@ import os
 import requests
 import json
 import time
+import random
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -119,68 +120,139 @@ def scrape_truth_social():
     
     try:
         driver = setup_selenium()
+        
+        # 添加隨機用戶代理
+        user_agents = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Safari/605.1.15',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36 Edg/92.0.902.84',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:95.0) Gecko/20100101 Firefox/95.0'
+        ]
+        driver.execute_cdp_cmd('Network.setUserAgentOverride', {"userAgent": random.choice(user_agents)})
+        
+        # 訪問頁面
         driver.get(TRUTH_URL)
         logger.info("已訪問 Truth Social 頁面")
         
-        # 等待頁面加載
-        WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "article.status-card, div.status-wrapper"))
-        )
-        logger.info("頁面元素已加載")
-        
-        # 確保頁面完全加載
-        time.sleep(5)
-        
-        page_source = driver.page_source
-        soup = BeautifulSoup(page_source, 'html.parser')
-        
-        # 尋找最新的貼文
-        posts = soup.select('article.status-card, div.status-wrapper')
-        
-        if not posts:
-            logger.warning("沒有找到貼文")
-            return None
-        
-        latest_post = posts[0]
-        logger.info("找到最新貼文")
-        
-        # 提取貼文內容
-        content_element = latest_post.select_one('div.status-content, div.status-body')
-        if not content_element:
-            logger.warning("找不到貼文內容元素")
-            return None
+        # 等待較長時間確保頁面完全加載
+        try:
+            logger.info("等待頁面元素加載...")
+            # 嘗試多種可能的選擇器
+            selectors = ["article.status-card", "div.status-wrapper", ".truth-social-post", ".post-content", ".timeline-item", "article", "div.post"]
             
-        content = content_element.text.strip()
-        
-        # 生成貼文 ID
-        post_id = hashlib.md5(content.encode()).hexdigest()
-        
-        # 檢查是否有媒體
-        media = latest_post.select('div.media-gallery img, div.media-gallery video, div.media-attachment img, div.media-attachment video')
-        media_urls = []
-        
-        for item in media:
-            src = item.get('src') or item.get('data-src')
-            if src:
-                if not src.startswith(('http://', 'https://')):
-                    src = f"https://truthsocial.com{src}" if src.startswith('/') else f"https://truthsocial.com/{src}"
-                media_urls.append(src)
-        
-        logger.info(f"貼文 ID: {post_id}, 媒體數量: {len(media_urls)}")
-        return {
-            'id': post_id,
-            'content': content,
-            'media_urls': media_urls
-        }
-        
-    except Exception as e:
-        logger.error(f"爬取失敗: {e}")
-        return None
-    
-    finally:
-        if driver:
-            driver.quit()
-            logger.info("Selenium driver 已關閉")
+            for selector in selectors:
+                try:
+                    logger.info(f"嘗試選擇器: {selector}")
+                    WebDriverWait(driver, 5).until(
+                        EC.presence_of_element_located((By.CSS_SELECTOR, selector))
+                    )
+                    logger.info(f"選擇器 {selector} 成功找到元素")
+                    break
+                except:
+                    logger.info(f"選擇器 {selector} 未找到元素")
+                    continue
+            
+            # 添加更長的等待時間
+            logger.info("等待頁面完全加載...")
+            time.sleep(10)
+            
+            # 截取屏幕截圖以便診斷
+            driver.save_screenshot("truthsocial_screenshot.png")
+            logger.info("已保存頁面截圖")
+            
+            # 獲取所有頁面內容進行分析
+            page_source = driver.page_source
+            
+            # 將頁面源代碼保存到文件中以便分析
+            with open("truthsocial_page.html", "w", encoding="utf-8") as f:
+                f.write(page_source)
+            logger.info("已保存頁面源代碼")
+            
+            soup = BeautifulSoup(page_source, 'html.parser')
+            
+            # 嘗試尋找任何可能的貼文容器元素
+            all_articles = soup.find_all('article')
+            all_divs_with_post = soup.find_all('div', class_=lambda x: x and ('post' in x.lower() or 'truth' in x.lower() or 'status' in x.lower()))
+            
+            logger.info(f"找到 {len(all_articles)} 個 article 元素")
+            logger.info(f"找到 {len(all_divs_with_post)} 個疑似貼文的 div 元素")
+            
+            # 尋找最新的貼文
+            posts = []
+            
+            # 嘗試多種可能的選擇器
+            for selector in ['article.status-card', 'div.status-wrapper', '.truth-social-post', '.post-content', '.timeline-item', 'article', 'div.post']:
+                posts = soup.select(selector)
+                if posts:
+                    logger.info(f"使用選擇器 '{selector}' 找到 {len(posts)} 個貼文")
+                    break
+            
+            if not posts and all_articles:
+                posts = all_articles
+                logger.info(f"使用所有 article 元素作為備用")
+            
+            if not posts and all_divs_with_post:
+                posts = all_divs_with_post
+                logger.info(f"使用可能的貼文 div 元素作為備用")
+            
+            if not posts:
+                logger.warning("沒有找到任何可能的貼文元素")
+                return None
+            
+            latest_post = posts[0]
+            logger.info("找到最新貼文")
+            
+            # 提取貼文內容（嘗試多種方法）
+            content = None
+            
+            # 方法 1: 直接找内容元素
+            content_selectors = ['div.status-content', 'div.status-body', '.post-content', '.truth-content', 'p', '.text']
+            for selector in content_selectors:
+                content_element = latest_post.select_one(selector)
+                if content_element:
+                    content = content_element.text.strip()
+                    logger.info(f"使用選擇器 '{selector}' 找到貼文內容")
+                    break
+            
+            # 方法 2: 如果沒找到特定内容元素，使用整個貼文的文本
+            if not content:
+                content = latest_post.get_text(separator=' ', strip=True)
+                logger.info("使用整個貼文的文本作為內容")
+            
+            if not content:
+                logger.warning("無法提取貼文內容")
+                return None
+                
+            # 生成貼文 ID
+            post_id = hashlib.md5(content.encode()).hexdigest()
+            
+            # 檢查是否有媒體
+            media_urls = []
+            
+            # 尋找所有圖片和視頻元素
+            for img in latest_post.find_all('img'):
+                src = img.get('src') or img.get('data-src')
+                if src and not src.endswith(('.svg', '.ico')):
+                    if not src.startswith(('http://', 'https://')):
+                        src = f"https://truthsocial.com{src}" if src.startswith('/') else f"https://truthsocial.com/{src}"
+                    media_urls.append(src)
+                    
+            for video in latest_post.find_all('video'):
+                src = video.get('src') or video.get('data-src')
+                if src:
+                    if not src.startswith(('http://', 'https://')):
+                        src = f"https://truthsocial.com{src}" if src.startswith('/') else f"https://truthsocial.com/{src}"
+                    media_urls.append(src)
+            
+            logger.info(f"貼文 ID: {post_id}, 媒體數量: {len(media_urls)}")
+            return {
+                'id': post_id,
+                'content': content,
+                'media_urls': media_urls
+            }
+            
+        except Exception as e:
+            logger.error(f"處理頁面內容時出錯: {e}")
 
 # 使用 DeepSeek API 翻譯內容
 def translate_with_deepseek(text):
